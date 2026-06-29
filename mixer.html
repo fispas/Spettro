@@ -1,0 +1,666 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stem Splitter — Mixer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#16181d; --panel:#1e2128; --panel-2:#23272f; --line:#2c313b;
+    --text:#e8e6e1; --muted:#8b9099; --dim:#3a3f4a; --accent:#f0a500;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:"IBM Plex Sans",system-ui,sans-serif; font-size:14px; line-height:1.4;
+    display:flex; flex-direction:column; min-height:100%;
+  }
+  .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
+
+  /* top bar */
+  .topbar{display:flex; align-items:center; gap:18px; flex-wrap:wrap; padding:14px 20px; background:var(--panel); border-bottom:1px solid var(--line)}
+  .brand{display:flex; align-items:baseline; gap:10px; margin-right:auto}
+  .brand b{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:18px; letter-spacing:.04em}
+  .brand span{color:var(--muted); font-size:12px; letter-spacing:.18em; text-transform:uppercase}
+  .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .field{display:flex; align-items:center; gap:8px}
+  .field label{color:var(--muted); font-size:12px}
+  input[type=text], select{background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 10px; font:inherit; font-size:13px; min-width:0}
+  input[type=text]{width:230px}
+  input[type=text]::placeholder{color:#5a5f68}
+  .filebtn{background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:8px; padding:8px 12px; cursor:pointer; font-size:13px; white-space:nowrap}
+  .filebtn:hover{border-color:#3c424d}
+  .filename{color:var(--muted); font-size:12px; max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .go{background:var(--accent); color:#1a1300; border:none; border-radius:8px; padding:9px 18px; font:inherit; font-weight:600; cursor:pointer; letter-spacing:.02em}
+  .go:hover{filter:brightness(1.06)}
+  .go:disabled{opacity:.5; cursor:default; filter:none}
+
+  /* transport */
+  .transport{display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--line)}
+  .tbtn{width:42px; height:34px; display:grid; place-items:center; background:var(--panel-2); color:var(--text); border:1px solid var(--line); border-radius:8px; cursor:pointer}
+  .tbtn:hover{border-color:#3c424d}
+  .tbtn svg{width:16px; height:16px; fill:currentColor}
+  .time{font-size:13px; color:var(--muted); min-width:108px}
+  .time b{color:var(--text); font-weight:500}
+  .seek{flex:1 1 200px; accent-color:var(--accent)}
+  .divider{width:1px; height:26px; background:var(--line)}
+  .ab{display:flex; gap:6px; align-items:center}
+  .ab button{height:30px; padding:0 11px; border-radius:7px; background:var(--panel-2); color:var(--muted); border:1px solid var(--line); cursor:pointer; font-size:12px; font-weight:600}
+  .ab button:hover{color:var(--text)}
+  .ab button.on{background:var(--accent); color:#220; border-color:var(--accent)}
+  .ab button:disabled{opacity:.45; cursor:default; color:var(--muted)}
+  .exp{height:30px; padding:0 13px; border-radius:7px; background:var(--panel-2); color:var(--text); border:1px solid var(--line); cursor:pointer; font-size:12px; font-weight:600}
+  .exp:hover{border-color:#3c424d}
+  .exp:disabled{opacity:.5; cursor:default}
+  .master{display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px}
+  .master input{width:110px; accent-color:var(--accent)}
+  input[type=range]{height:4px; cursor:pointer}
+
+  /* console */
+  .console{flex:1; padding:18px 20px; display:flex; flex-direction:column; gap:10px}
+  .empty{margin:auto; max-width:480px; text-align:center; color:var(--muted); padding:48px 16px}
+  .empty h1{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:22px; color:var(--text); margin:0 0 10px; letter-spacing:.01em}
+  .empty p{margin:0; font-size:14px}
+  .status{color:var(--muted); font-size:13px; min-height:18px}
+  .status.err{color:#ef6f6c}
+  .status .spin{display:inline-block; width:11px; height:11px; margin-right:7px; vertical-align:-1px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .channel{display:grid; grid-template-columns:210px 1fr; align-items:stretch; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; transition:opacity .15s, border-color .15s}
+  .channel.silent{opacity:.55}
+  .channel.solo{border-color:var(--accent)}
+  .strip{display:flex; flex-direction:column; gap:8px; padding:12px 14px; border-right:1px solid var(--line); background:var(--panel-2)}
+  .striptop{display:flex; align-items:center; gap:9px}
+  .dot{width:10px; height:10px; border-radius:3px; flex:none}
+  .name{font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:15px; letter-spacing:.01em}
+  .ms{display:flex; gap:6px; margin-left:auto}
+  .ms button{width:26px; height:24px; border-radius:6px; cursor:pointer; font-size:12px; font-weight:600; background:transparent; color:var(--muted); border:1px solid var(--line)}
+  .ms button:hover{color:var(--text)}
+  .ms button.on-m{background:#ef6f6c; color:#220; border-color:#ef6f6c}
+  .ms button.on-s{background:var(--accent); color:#220; border-color:var(--accent)}
+  .fader{display:flex; align-items:center; gap:8px}
+  .fader input{flex:1; accent-color:var(--accent)}
+  .fader .pct{font-size:11px; color:var(--muted); width:34px; text-align:right}
+
+  .viz{display:flex; flex-direction:column; min-height:90px}
+  .viz canvas{display:block; width:100%}
+  .wave{flex:1; min-height:60px; cursor:pointer}
+  .spec{height:24px}
+
+  .note{padding:12px 20px; color:#5a5f68; font-size:12px; border-top:1px solid var(--line)}
+  .note code{font-family:"IBM Plex Mono",monospace; color:var(--muted)}
+  .note b{color:var(--muted); font-weight:600}
+
+  @media (max-width:640px){
+    input[type=text]{width:170px}
+    .channel{grid-template-columns:1fr}
+    .strip{border-right:none; border-bottom:1px solid var(--line)}
+    .viz{min-height:104px}
+  }
+  @media (prefers-reduced-motion:reduce){*{transition:none !important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand"><b>Stem Splitter</b><span>mixer</span></div>
+  <div class="controls">
+    <div class="field">
+      <button class="filebtn" id="pick" type="button">Scegli file</button>
+      <span class="filename" id="fname"></span>
+      <input type="file" id="file" accept="audio/*" hidden>
+    </div>
+    <div class="field"><label for="url">o link</label><input type="text" id="url" placeholder="https://youtu.be/…"></div>
+    <div class="field"><label for="model">modello</label><select id="model"></select></div>
+    <button class="go" id="go" type="button">Separa</button>
+    <button class="filebtn" id="demo" type="button" title="Carica una traccia demo sintetica per provare il mixer senza separare nulla">Demo</button>
+  </div>
+</header>
+
+<section class="transport" id="transport" hidden>
+  <button class="tbtn" id="play" title="Play / Pausa (Spazio)" aria-label="Play o pausa">
+    <svg id="play-ic" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+  </button>
+  <button class="tbtn" id="stop" title="Stop" aria-label="Stop"><svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg></button>
+  <div class="time mono"><b id="cur">0:00</b> / <span id="dur">0:00</span></div>
+  <input class="seek" id="seek" type="range" min="0" max="1000" value="0" aria-label="Posizione">
+  <div class="divider"></div>
+  <div class="ab">
+    <button id="setA" title="Imposta inizio loop alla posizione attuale">A</button>
+    <button id="setB" title="Imposta fine loop alla posizione attuale">B</button>
+    <button id="loop" title="Ripeti la sezione A–B" disabled>Loop</button>
+    <button id="clearAB" title="Cancella A–B" disabled>✕</button>
+  </div>
+  <div class="divider"></div>
+  <button class="exp" id="exp" title="Esporta il mix attuale (muto/solo/volume) come WAV">Esporta mix</button>
+  <div class="divider"></div>
+  <div class="master">Volume <input id="master" type="range" min="0" max="1" step="0.01" value="1"></div>
+</section>
+
+<main class="console">
+  <div class="empty" id="empty">
+    <h1>Scomponi una canzone nelle sue tracce</h1>
+    <p>Scegli un file audio o incolla un link YouTube, poi premi <b>Separa</b>. Quando è pronto, ogni strumento diventa una traccia che puoi mettere in muto, isolare in solo, di cui vedi forma d'onda e spettro, e che puoi esportare come base.</p>
+  </div>
+  <div class="status" id="status" hidden></div>
+  <div class="channels" id="channels"></div>
+</main>
+
+<footer class="note">
+  <b>Spazio</b> play/pausa · <b>click sulla forma d'onda</b> vai lì · <b>A</b>/<b>B</b> + <b>Loop</b> ripeti una sezione · <b>Esporta mix</b> salva l'ascolto attuale come WAV (es. muta la voce → base su cui cantare). La separazione gira sul server (<code>python server.py</code>); il mixer è tutto nel browser.
+</footer>
+
+<script>
+(() => {
+  "use strict";
+
+  const LABELS = {vocals:"Voce", drums:"Batteria", bass:"Basso", guitar:"Chitarra", piano:"Piano", other:"Altro"};
+  const COLORS = {vocals:"#ef6f6c", drums:"#f2a65a", bass:"#6c8ee0", guitar:"#67c587", piano:"#b98ddb", other:"#9aa3ad"};
+  const DIM = "#3a3f4a", ACCENT = "#f0a500";
+
+  const $ = id => document.getElementById(id);
+  const els = {
+    file:$("file"), pick:$("pick"), fname:$("fname"), url:$("url"), model:$("model"), go:$("go"), demo:$("demo"),
+    transport:$("transport"), play:$("play"), playIc:$("play-ic"), stop:$("stop"),
+    cur:$("cur"), dur:$("dur"), seek:$("seek"),
+    setA:$("setA"), setB:$("setB"), loop:$("loop"), clearAB:$("clearAB"), exp:$("exp"), master:$("master"),
+    empty:$("empty"), status:$("status"), channels:$("channels"),
+  };
+
+  const state = {
+    ctx:null, master:null, limiter:null, tracks:[], trackName:"mix",
+    playing:false, startedAt:0, offset:0, duration:0, raf:null,
+    loopA:null, loopB:null, loopOn:false,
+  };
+
+  const fmt = s => { s = Math.max(0, Math.floor(s)); return Math.floor(s/60) + ":" + String(s%60).padStart(2,"0"); };
+  const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+  const ramp = (param, val) => param.setTargetAtTime(val, state.ctx.currentTime, 0.012);
+
+  // ---------- model list ----------
+  fetch("/models").then(r=>r.json()).then(d => {
+    for (const m of d.models){
+      const o = document.createElement("option");
+      o.value = m; o.textContent = m; if (m === d.default) o.selected = true;
+      els.model.appendChild(o);
+    }
+  }).catch(() => {
+    els.model.innerHTML = '<option value="htdemucs">htdemucs</option><option value="htdemucs_6s">htdemucs_6s</option>';
+  });
+
+  // ---------- file picker ----------
+  els.pick.addEventListener("click", () => els.file.click());
+  els.file.addEventListener("change", () => { els.fname.textContent = els.file.files[0] ? els.file.files[0].name : ""; });
+
+  function status(msg, kind){
+    els.status.hidden = !msg;
+    els.status.className = "status" + (kind === "err" ? " err" : "");
+    els.status.innerHTML = (kind === "busy" ? '<span class="spin"></span>' : "") + (msg || "");
+  }
+
+  // ---------- separate ----------
+  els.go.addEventListener("click", async () => {
+    const file = els.file.files[0];
+    const url = els.url.value.trim();
+    if (!file && !url){ status("Scegli un file o incolla un link YouTube.", "err"); return; }
+
+    const fd = new FormData();
+    if (file) fd.append("file", file);
+    if (url)  fd.append("url", url);
+    fd.append("model", els.model.value);
+
+    els.go.disabled = true;
+    status("Scompongo l'audio… può richiedere qualche minuto.", "busy");
+    try{
+      const r = await fetch("/separate", {method:"POST", body:fd});
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Errore durante la separazione.");
+      await loadFromUrls(data.stems, data.track);
+      els.empty.hidden = true;
+      els.transport.hidden = false;
+      status("Pronto: " + data.track + " — " + data.stems.length + " tracce.");
+      if (!state.raf) loop();
+    }catch(e){
+      status("Errore: " + e.message, "err");
+    }finally{
+      els.go.disabled = false;
+    }
+  });
+
+  // ---------- engine ----------
+  function resetEngine(){
+    _kill(); state.playing = false; setPlayIcon(false);
+    state.tracks = []; state.offset = 0; state.duration = 0;
+    state.loopA = state.loopB = null; state.loopOn = false; refreshAB();
+    els.channels.innerHTML = "";
+  }
+
+  function ensureAudio(){
+    state.ctx = state.ctx || new (window.AudioContext || window.webkitAudioContext)();
+    if (!state.master){
+      state.master = state.ctx.createGain();
+      state.limiter = state.ctx.createDynamicsCompressor();
+      state.limiter.threshold.value = -2; state.limiter.knee.value = 0;
+      state.limiter.ratio.value = 20; state.limiter.attack.value = 0.003; state.limiter.release.value = 0.25;
+      state.master.connect(state.limiter); state.limiter.connect(state.ctx.destination);
+    }
+    state.master.gain.value = parseFloat(els.master.value);
+  }
+
+  // items: [{name, buffer}] con AudioBuffer gia' pronti (da URL o sintetizzati)
+  function mount(items, trackName){
+    ensureAudio();
+    resetEngine();
+    state.trackName = trackName || "mix";
+    let dur = 0;
+    for (const it of items){
+      dur = Math.max(dur, it.buffer.duration);
+      const gain = state.ctx.createGain();
+      const analyser = state.ctx.createAnalyser();
+      analyser.fftSize = 2048; analyser.smoothingTimeConstant = 0.82;
+      gain.connect(state.master);
+      state.tracks.push({
+        key:it.name, label:LABELS[it.name] || it.name, color:COLORS[it.name] || "#9aa3ad",
+        buffer:it.buffer, gain, analyser, source:null, muted:false, soloed:false, vol:1,
+        peaks:computePeaks(it.buffer), freq:new Uint8Array(analyser.frequencyBinCount),
+        wave:null, wctx:null, spec:null, sctx:null, row:null, mBtn:null, sBtn:null,
+      });
+    }
+    state.duration = dur;
+    els.dur.textContent = fmt(dur);
+    buildChannels();
+    sizeCanvases();
+    applyGains();
+  }
+
+  async function loadFromUrls(stems, trackName){
+    ensureAudio();
+    const items = [];
+    for (const s of stems){
+      const resp = await fetch(s.url);
+      const arr = await resp.arrayBuffer();
+      const buffer = await state.ctx.decodeAudioData(arr);
+      items.push({name:s.name, buffer});
+    }
+    mount(items, trackName);
+  }
+
+  // ---------- demo (sintetizzata nel browser, nessun backend) ----------
+  function loadDemo(){
+    ensureAudio();
+    mount(synthDemo(state.ctx), "demo");
+    els.empty.hidden = true;
+    els.transport.hidden = false;
+    status("Demo caricata — 4 tracce sintetiche. Prova muto/solo, loop A–B, export.");
+    if (!state.raf) loop();
+  }
+
+  function synthDemo(ctx){
+    const sr = ctx.sampleRate;
+    const bpm = 110, beat = 60/bpm, beats = 16, eighth = beat/2;
+    const dur = beats*beat, frames = Math.ceil(dur*sr);
+    const bass = new Float32Array(frames), drums = new Float32Array(frames),
+          piano = new Float32Array(frames), guitar = new Float32Array(frames);
+
+    // rumore deterministico
+    let seed = 22222;
+    const noise = () => { seed = (seed*1103515245 + 12345) & 0x7fffffff; return seed/0x7fffffff*2 - 1; };
+
+    const F = {F2:87.31,G2:98.00,A2:110.00,B2:123.47,C3:130.81,D3:146.83,E3:164.81,F3:174.61,G3:196.00,
+               A3:220.00,B3:246.94,C4:261.63,D4:293.66,E4:329.63,F4:349.23,G4:392.00,A4:440.00};
+
+    function tone(buf, freq, start, len, amp, harm){
+      const i0 = Math.floor(start*sr), i1 = Math.min(frames, Math.floor((start+len)*sr)), tau = len*0.33;
+      for (let i=i0;i<i1;i++){
+        const t = (i-i0)/sr, env = Math.exp(-t/tau);
+        let s = 0; for (let h=0;h<harm.length;h++) s += harm[h]*Math.sin(2*Math.PI*freq*(h+1)*t);
+        buf[i] += amp*env*s;
+      }
+    }
+    function chord(buf, names, start, len, amp){ for (const n of names) tone(buf, F[n], start, len, amp, [1,0.5,0.25]); }
+    function kick(start, amp){
+      const len=0.28, i0=Math.floor(start*sr), i1=Math.min(frames,Math.floor((start+len)*sr)), tau=len*0.25;
+      for (let i=i0;i<i1;i++){ const t=(i-i0)/sr, env=Math.exp(-t/tau), f=45+(120-45)*Math.exp(-t/0.03);
+        drums[i]+=amp*env*Math.sin(2*Math.PI*f*t); }
+    }
+    function snare(start, amp){
+      const len=0.18, i0=Math.floor(start*sr), i1=Math.min(frames,Math.floor((start+len)*sr)), tau=len*0.3;
+      for (let i=i0;i<i1;i++){ const t=(i-i0)/sr, env=Math.exp(-t/tau);
+        drums[i]+=amp*env*(0.7*noise()+0.3*Math.sin(2*Math.PI*190*t)); }
+    }
+    let prevN=0;
+    function hat(start, amp){
+      const len=0.05, i0=Math.floor(start*sr), i1=Math.min(frames,Math.floor((start+len)*sr)), tau=len*0.3;
+      for (let i=i0;i<i1;i++){ const t=(i-i0)/sr, env=Math.exp(-t/tau), n=noise(), hp=n-prevN; prevN=n;
+        drums[i]+=amp*env*hp*0.6; }
+    }
+
+    const roots = ["A2","F2","C3","G2"];                 // Am - F - C - G
+    const chords = [["A3","C4","E4"],["F3","A3","C4"],["C4","E4","G4"],["G3","B3","D4"]];
+    const melody = ["E4",null,"G4","A4",null,"E4",null,"D4",  "C4",null,"D4","E4",null,"C4",null,"A3",
+                    "G4",null,"A4","G4","E4",null,"G4",null,  "E4",null,"D4","C4",null,"D4",null,null];
+
+    for (let bar=0; bar<4; bar++){
+      const t0 = bar*4*beat;
+      tone(bass, F[roots[bar]], t0,           beat*1.4, 0.55, [1,0,0.25]);
+      tone(bass, F[roots[bar]], t0 + 2*beat,  beat*1.4, 0.55, [1,0,0.25]);
+      chord(piano, chords[bar], t0,           beat*1.2, 0.14);
+      chord(piano, chords[bar], t0 + 2*beat,  beat*1.2, 0.14);
+    }
+    for (let b=0;b<beats;b++){
+      const t = b*beat;
+      if (b%4===0 || b%4===2) kick(t, 0.9);
+      if (b%4===1 || b%4===3) snare(t, 0.6);
+    }
+    for (let e=0;e<beats*2;e++) hat(e*eighth, 0.25);
+    for (let e=0;e<melody.length;e++){ const n = melody[e]; if (n) tone(guitar, F[n], e*eighth, eighth*1.7, 0.24, [1,0.4,0.2,0.1]); }
+
+    const toBuffer = (data) => {
+      let peak = 1e-6; for (let i=0;i<frames;i++) peak = Math.max(peak, Math.abs(data[i]));
+      const g = 0.82/peak; for (let i=0;i<frames;i++) data[i] *= g;
+      const ab = ctx.createBuffer(2, frames, sr);
+      ab.copyToChannel(data, 0); ab.copyToChannel(data, 1);
+      return ab;
+    };
+    return [
+      {name:"bass",   buffer:toBuffer(bass)},
+      {name:"drums",  buffer:toBuffer(drums)},
+      {name:"piano",  buffer:toBuffer(piano)},
+      {name:"guitar", buffer:toBuffer(guitar)},
+    ];
+  }
+  els.demo.addEventListener("click", loadDemo);
+
+  function computePeaks(buffer){
+    const P = 2000, len = buffer.length;
+    const c0 = buffer.getChannelData(0);
+    const c1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+    const mins = new Float32Array(P), maxs = new Float32Array(P);
+    const block = len / P;
+    for (let i=0;i<P;i++){
+      const s = Math.floor(i*block), e = Math.min(len, Math.floor((i+1)*block));
+      let mn = 1, mx = -1;
+      for (let j=s;j<e;j++){
+        const v = c1 ? (c0[j]+c1[j])*0.5 : c0[j];
+        if (v<mn) mn=v; if (v>mx) mx=v;
+      }
+      if (e<=s){ mn=0; mx=0; }
+      mins[i]=mn; maxs[i]=mx;
+    }
+    return {mins, maxs, P};
+  }
+
+  function buildChannels(){
+    els.channels.innerHTML = "";
+    for (const t of state.tracks){
+      const row = document.createElement("div");
+      row.className = "channel";
+      row.innerHTML = `
+        <div class="strip">
+          <div class="striptop">
+            <span class="dot" style="background:${t.color}"></span>
+            <span class="name">${t.label}</span>
+            <span class="ms">
+              <button class="m" title="Muto">M</button>
+              <button class="s" title="Solo">S</button>
+            </span>
+          </div>
+          <div class="fader">
+            <input type="range" min="0" max="1" step="0.01" value="1" aria-label="Volume ${t.label}">
+            <span class="pct mono">100</span>
+          </div>
+        </div>
+        <div class="viz"><canvas class="wave"></canvas><canvas class="spec"></canvas></div>`;
+
+      t.mBtn = row.querySelector(".m");
+      t.sBtn = row.querySelector(".s");
+      const vol = row.querySelector(".fader input");
+      const pct = row.querySelector(".pct");
+      t.wave = row.querySelector(".wave"); t.wctx = t.wave.getContext("2d");
+      t.spec = row.querySelector(".spec"); t.sctx = t.spec.getContext("2d");
+      t.row = row;
+
+      t.mBtn.addEventListener("click", () => { t.muted = !t.muted; applyGains(); });
+      t.sBtn.addEventListener("click", () => { t.soloed = !t.soloed; applyGains(); });
+      vol.addEventListener("input", () => { t.vol = parseFloat(vol.value); pct.textContent = Math.round(t.vol*100); applyGains(); });
+      t.wave.addEventListener("click", e => {
+        const r = t.wave.getBoundingClientRect();
+        seekTo((e.clientX - r.left) / r.width * state.duration);
+      });
+
+      els.channels.appendChild(row);
+    }
+  }
+
+  function audible(t){
+    const anySolo = state.tracks.some(x => x.soloed);
+    return anySolo ? t.soloed : !t.muted;
+  }
+  function applyGains(){
+    for (const t of state.tracks) ramp(t.gain.gain, audible(t) ? t.vol : 0);
+    refreshStrip();
+  }
+  function refreshStrip(){
+    for (const t of state.tracks){
+      t.mBtn.classList.toggle("on-m", t.muted);
+      t.sBtn.classList.toggle("on-s", t.soloed);
+      t.row.classList.toggle("silent", !audible(t));
+      t.row.classList.toggle("solo", t.soloed);
+    }
+  }
+
+  // ---------- transport core ----------
+  function _spawn(off){
+    const ctx = state.ctx, when = ctx.currentTime + 0.04;
+    for (const t of state.tracks){
+      const src = ctx.createBufferSource();
+      src.buffer = t.buffer;
+      src.connect(t.analyser);   // tap spettro (sempre attivo)
+      src.connect(t.gain);       // percorso audio (muto/solo/volume)
+      src.start(when, off);
+      t.source = src;
+    }
+    state.startedAt = when; state.offset = off;
+  }
+  function _kill(){
+    for (const t of state.tracks){
+      if (t.source){ try{ t.source.stop(); }catch(e){} try{ t.source.disconnect(); }catch(e){} t.source = null; }
+    }
+  }
+  function pos(){ return state.playing ? state.offset + (state.ctx.currentTime - state.startedAt) : state.offset; }
+
+  function play(){
+    if (state.playing || !state.tracks.length) return;
+    state.ctx.resume();
+    _spawn(clamp(state.offset, 0, state.duration));
+    state.playing = true; setPlayIcon(true);
+  }
+  function pause(){
+    if (!state.playing) return;
+    const p = pos(); _kill();
+    state.offset = clamp(p, 0, state.duration);
+    state.playing = false; setPlayIcon(false);
+  }
+  function stop(){
+    _kill(); state.playing = false; setPlayIcon(false);
+    state.offset = 0; els.seek.value = 0; els.cur.textContent = "0:00";
+  }
+  function seekTo(sec){
+    const was = state.playing;
+    if (was) _kill();
+    state.offset = clamp(sec, 0, state.duration);
+    if (was){ _spawn(state.offset); }
+    els.cur.textContent = fmt(state.offset);
+  }
+  function setPlayIcon(p){
+    els.playIc.innerHTML = p ? '<path d="M6 5h4v14H6zM14 5h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>';
+  }
+
+  els.play.addEventListener("click", () => state.playing ? pause() : play());
+  els.stop.addEventListener("click", stop);
+  els.master.addEventListener("input", () => { if (state.master) ramp(state.master.gain, parseFloat(els.master.value)); });
+  els.seek.addEventListener("input", () => seekTo(parseFloat(els.seek.value)/1000 * state.duration));
+
+  // ---------- A/B loop ----------
+  function normalizeAB(){
+    if (state.loopA != null && state.loopB != null && state.loopA > state.loopB){
+      const tmp = state.loopA; state.loopA = state.loopB; state.loopB = tmp;
+    }
+  }
+  function refreshAB(){
+    const ready = state.loopA != null && state.loopB != null;
+    els.loop.disabled = !ready; els.clearAB.disabled = !(state.loopA != null || state.loopB != null);
+    els.setA.classList.toggle("on", state.loopA != null);
+    els.setB.classList.toggle("on", state.loopB != null);
+    els.loop.classList.toggle("on", state.loopOn && ready);
+  }
+  els.setA.addEventListener("click", () => { state.loopA = clamp(pos(),0,state.duration); normalizeAB(); refreshAB(); });
+  els.setB.addEventListener("click", () => { state.loopB = clamp(pos(),0,state.duration); normalizeAB(); refreshAB(); });
+  els.loop.addEventListener("click", () => { if (state.loopA==null||state.loopB==null) return; state.loopOn = !state.loopOn; refreshAB(); });
+  els.clearAB.addEventListener("click", () => { state.loopA = state.loopB = null; state.loopOn = false; refreshAB(); });
+
+  // ---------- keyboard ----------
+  window.addEventListener("keydown", e => {
+    if (e.code !== "Space") return;
+    const tag = e.target && e.target.tagName;
+    if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (!state.tracks.length) return;
+    e.preventDefault(); state.playing ? pause() : play();
+  });
+
+  // ---------- export (minus-one) ----------
+  els.exp.addEventListener("click", exportMix);
+  async function exportMix(){
+    if (!state.tracks.length) return;
+    els.exp.disabled = true; status("Esporto il mix…", "busy");
+    try{
+      const rate = state.ctx.sampleRate;
+      const frames = Math.ceil(state.duration * rate);
+      const oac = new OfflineAudioContext(2, frames, rate);
+      const m = oac.createGain(); m.gain.value = parseFloat(els.master.value);
+      const lim = oac.createDynamicsCompressor();
+      lim.threshold.value = -2; lim.knee.value = 0; lim.ratio.value = 20; lim.attack.value = 0.003; lim.release.value = 0.25;
+      m.connect(lim); lim.connect(oac.destination);
+      for (const t of state.tracks){
+        const src = oac.createBufferSource(); src.buffer = t.buffer;
+        const g = oac.createGain(); g.gain.value = audible(t) ? t.vol : 0;
+        src.connect(g); g.connect(m); src.start(0);
+      }
+      const rendered = await oac.startRendering();
+      const blob = encodeWAV(rendered);
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = state.trackName + "_mix.wav";
+      a.click(); URL.revokeObjectURL(a.href);
+      status("Mix esportato: " + a.download);
+    }catch(e){
+      status("Errore export: " + e.message, "err");
+    }finally{
+      els.exp.disabled = false;
+    }
+  }
+
+  function encodeWAV(buf){
+    const nCh = buf.numberOfChannels, len = buf.length, rate = buf.sampleRate;
+    const ch = []; for (let c=0;c<nCh;c++) ch.push(buf.getChannelData(c));
+    const blockAlign = nCh * 2, dataLen = len * blockAlign;
+    const ab = new ArrayBuffer(44 + dataLen), dv = new DataView(ab);
+    const str = (o,s) => { for (let i=0;i<s.length;i++) dv.setUint8(o+i, s.charCodeAt(i)); };
+    str(0,"RIFF"); dv.setUint32(4, 36+dataLen, true); str(8,"WAVE");
+    str(12,"fmt "); dv.setUint32(16,16,true); dv.setUint16(20,1,true);
+    dv.setUint16(22,nCh,true); dv.setUint32(24,rate,true); dv.setUint32(28,rate*blockAlign,true);
+    dv.setUint16(32,blockAlign,true); dv.setUint16(34,16,true);
+    str(36,"data"); dv.setUint32(40,dataLen,true);
+    let off = 44;
+    for (let i=0;i<len;i++){
+      for (let c=0;c<nCh;c++){
+        let v = Math.max(-1, Math.min(1, ch[c][i]));
+        dv.setInt16(off, v < 0 ? v*0x8000 : v*0x7FFF, true); off += 2;
+      }
+    }
+    return new Blob([ab], {type:"audio/wav"});
+  }
+
+  // ---------- render loop ----------
+  function loop(){
+    let p = pos();
+    if (state.playing){
+      if (state.loopOn && state.loopA != null && state.loopB != null && p >= state.loopB){
+        _kill(); _spawn(state.loopA); p = state.loopA;
+      } else if (p >= state.duration){
+        stop(); p = 0;
+      }
+    }
+    if (state.duration > 0){
+      els.cur.textContent = fmt(p);
+      if (document.activeElement !== els.seek) els.seek.value = Math.round(p / state.duration * 1000);
+    }
+    for (const t of state.tracks){ drawWave(t, p); drawSpectrum(t); }
+    state.raf = requestAnimationFrame(loop);
+  }
+
+  function drawWave(t, p){
+    const cvs = t.wave, g = t.wctx; if (!g) return;
+    const W = cvs.width, H = cvs.height, mid = H/2, pk = t.peaks;
+    g.clearRect(0,0,W,H);
+    g.fillStyle = audible(t) ? t.color : DIM;
+    for (let x=0;x<W;x++){
+      const idx = Math.min(pk.P-1, Math.floor(x / W * pk.P));
+      const y1 = mid - pk.maxs[idx]*mid*0.92;
+      const y2 = mid - pk.mins[idx]*mid*0.92;
+      g.fillRect(x, y1, 1, Math.max(1, y2-y1));
+    }
+    if (state.loopA != null && state.loopB != null && state.duration > 0){
+      const xa = state.loopA/state.duration*W, xb = state.loopB/state.duration*W;
+      g.fillStyle = "rgba(240,165,0,0.14)";
+      g.fillRect(Math.min(xa,xb), 0, Math.abs(xb-xa), H);
+    }
+    if (state.duration > 0){
+      g.fillStyle = ACCENT;
+      g.fillRect(p/state.duration*W, 0, 1, H);
+    }
+  }
+
+  function drawSpectrum(t){
+    const a = t.analyser, g = t.sctx, cvs = t.spec; if (!g) return;
+    a.getByteFrequencyData(t.freq);
+    const N = t.freq.length, W = cvs.width, H = cvs.height;
+    g.clearRect(0,0,W,H);
+    const col = audible(t) ? t.color : DIM, bars = 48, bw = W/bars;
+    for (let i=0;i<bars;i++){
+      const lo = Math.floor(Math.pow(N, i/bars));
+      const hi = Math.max(lo+1, Math.floor(Math.pow(N, (i+1)/bars)));
+      let sum = 0, n = 0;
+      for (let j=lo;j<hi && j<N;j++){ sum += t.freq[j]; n++; }
+      const v = (n ? sum/n : 0) / 255;
+      const bh = Math.max(1, v*H);
+      g.fillStyle = col; g.globalAlpha = 0.35 + 0.65*v;
+      g.fillRect(i*bw + 1, H - bh, bw - 2, bh);
+    }
+    g.globalAlpha = 1;
+  }
+
+  // ---------- canvas sizing ----------
+  function sizeCanvases(){
+    const dpr = window.devicePixelRatio || 1;
+    for (const t of state.tracks){
+      for (const c of [t.wave, t.spec]){
+        if (!c) continue;
+        const r = c.getBoundingClientRect();
+        c.width  = Math.max(1, Math.round(r.width  * dpr));
+        c.height = Math.max(1, Math.round(r.height * dpr));
+      }
+    }
+  }
+  let rt;
+  window.addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(sizeCanvases, 120); });
+
+})();
+</script>
+</body>
+</html>

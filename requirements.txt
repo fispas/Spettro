@@ -1,0 +1,4 @@
+demucs>=4.0.0
+yt-dlp>=2024.1.0
+gradio>=4.0.0
+flask>=3.0.0
